@@ -1,0 +1,60 @@
+import express from "express";
+import { createServer } from "http";
+import path from "path";
+import { fileURLToPath } from "url";
+import { initializeDatabase, closeDatabase } from "./db.js";
+import toolsRouter from "./routes/tools.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+async function startServer() {
+  const app = express();
+  const server = createServer(app);
+
+  // Initialize database
+  try {
+    await initializeDatabase();
+    console.log("✓ Database initialized");
+  } catch (error) {
+    console.error("Failed to initialize database:", error);
+    process.exit(1);
+  }
+
+  // Middleware
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+
+  // API routes
+  app.use("/api/tools", toolsRouter);
+
+  // Serve static files from dist/public in production
+  const staticPath =
+    process.env.NODE_ENV === "production"
+      ? path.resolve(__dirname, "public")
+      : path.resolve(__dirname, "..", "dist", "public");
+
+  app.use(express.static(staticPath));
+
+  // Handle client-side routing - serve index.html for all routes
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(staticPath, "index.html"));
+  });
+
+  const port = process.env.PORT || 3000;
+
+  server.listen(port, () => {
+    console.log(`✓ Server running on http://localhost:${port}/`);
+  });
+
+  // Graceful shutdown
+  process.on("SIGTERM", async () => {
+    console.log("SIGTERM received, shutting down gracefully");
+    server.close(async () => {
+      await closeDatabase();
+      process.exit(0);
+    });
+  });
+}
+
+startServer().catch(console.error);
